@@ -1,0 +1,62 @@
+{
+  "name": "compress-sdk-plus",
+  "version": "1.0.1",
+  "description": "Browser-side media compression SDK supporting video and image compression",
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./index.ts",
+      "types": "./index.d.ts"
+    },
+    "./video": "./core/video/index.ts",
+    "./image": "./core/image/index.ts"
+  },
+  "files": [
+    "core/**/*.ts",
+    "index.ts",
+    "index.d.ts",
+    "README.md",
+    "README.zh-CN.md"
+  ],
+  "scripts": {
+    "dev": "vite build",
+    "build": "vite build"
+  },
+  "keywords": [
+    "compress",
+    "compression",
+    "video",
+    "image",
+    "webcodecs",
+    "watermark",
+    "nuxt",
+    "vue"
+  ],
+  "dependencies": {
+    "@jsquash/jpeg": "^1.6.0",
+    "@jsquash/webp": "^1.5.0",
+    "@jsquash/png": "^3.1.0",
+    "@jsquash/avif": "^2.1.0",
+    "@jsquash/resize": "^2.1.0",
+    "mediabunny": "^3.0.0"
+  },
+  "peerDependencies": {
+    "vue": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yunzhiheyi/compress-sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/yunzhiheyi/compress-sdk/issues"
+  },
+  "homepage": "https://github.com/yunzhiheyi/compress-sdk#readme",
+  "license": "MIT"
+}
