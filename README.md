@@ -6,8 +6,8 @@ Browser-side media compression SDK supporting video and image compression.
 
 ## Live Demo
 
-- Image Compression: https://www.maxmax.cc/image-compress
-- Video Compression: https://www.maxmax.cc/video-compress
+- [Image Compression](https://www.maxmax.cc/image-compress)
+- [Video Compression](https://www.maxmax.cc/video-compress)
 
 ## Features
 

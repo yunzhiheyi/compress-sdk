@@ -6,8 +6,8 @@
 
 ## 在线演示
 
-- 图片压缩：https://www.maxmax.cc/image-compress
-- 视频压缩：https://www.maxmax.cc/video-compress
+- [图片压缩](https://www.maxmax.cc/image-compress)
+- [视频压缩](https://www.maxmax.cc/video-compress)
 
 ## 功能特点
 
