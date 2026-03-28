@@ -2,6 +2,20 @@
 
 All notable changes will be documented in this file.
 
+## [1.0.2] - 2026-03-28
+
+### Fixed
+
+- Fixed `mediabunny` dependency version to `^1.40.1` (compatible with published version)
+
+## [1.0.1] - 2026-03-28
+
+### Fixed
+
+- Fixed image compression type issues
+- Fixed video compression type issues
+- Updated dependencies to stable versions
+
 ## [1.0.0] - 2026-03-28
 
 ### Added

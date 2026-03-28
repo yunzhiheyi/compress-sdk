@@ -4,6 +4,11 @@ Browser-side media compression SDK supporting video and image compression.
 
 [English](#) | [中文](https://github.com/yunzhiheyi/compress-sdk/blob/main/README.zh-CN.md)
 
+## Live Demo
+
+- Image Compression: https://www.maxmax.cc/image-compress
+- Video Compression: https://www.maxmax.cc/video-compress
+
 ## Features
 
 - **Video Compression** - Based on mediabunny (WebCodecs)

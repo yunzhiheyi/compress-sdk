@@ -4,6 +4,11 @@
 
 浏览器端媒体压缩 SDK，支持视频和图片压缩。
 
+## 在线演示
+
+- 图片压缩：https://www.maxmax.cc/image-compress
+- 视频压缩：https://www.maxmax.cc/video-compress
+
 ## 功能特点
 
 - **视频压缩** - 基于 mediabunny (WebCodecs)
