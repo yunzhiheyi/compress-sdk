@@ -1,6 +1,6 @@
 # Compress SDK 中文文档
 
-[English](https://github.com/yunzhiheyi/compress-sdk) | 中文
+[English](https://github.com/yunzhiheyi/compress-sdk/blob/master/README.md) | 中文
 
 浏览器端媒体压缩 SDK，支持视频和图片压缩。
 

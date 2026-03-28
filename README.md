@@ -2,7 +2,7 @@
 
 Browser-side media compression SDK supporting video and image compression.
 
-[English](#) | [中文](https://github.com/yunzhiheyi/compress-sdk/blob/main/README.zh-CN.md)
+[English](#) | [中文](https://github.com/yunzhiheyi/compress-sdk/blob/master/README.zh-CN.md)
 
 ## Live Demo
 
