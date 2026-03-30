@@ -11,12 +11,12 @@ import type { VideoInfo } from '../types'
  * Parse video information from File
  */
 export async function parseVideoInfo(file: File): Promise<VideoInfo> {
-  const { BlobSource, Input, MP4 } = await import('mediabunny')
+  const { BlobSource, Input, ALL_FORMATS } = await import('mediabunny')
 
   const source = new BlobSource(file)
   const input = new Input({
     source,
-    formats: [MP4],
+    formats: ALL_FORMATS,
   })
 
   try {
@@ -35,6 +35,9 @@ export async function parseVideoInfo(file: File): Promise<VideoInfo> {
 
       const trackBitrate = primaryVideoTrack.averageBitrate
       bitrate = trackBitrate > 0 ? trackBitrate : (duration > 0 ? Math.round((file.size * 8) / duration) : 0)
+
+      const canDecode = await primaryVideoTrack.canDecode().catch(() => 'unknown')
+      console.log('[SDK parseVideoInfo] codec:', primaryVideoTrack.codec, 'internalCodecId:', primaryVideoTrack.internalCodecId, 'canDecode:', canDecode)
     }
 
     const mimeType = await input.getMimeType()
@@ -51,7 +54,9 @@ export async function parseVideoInfo(file: File): Promise<VideoInfo> {
       audioTracks: audioTracks.length,
     }
   } finally {
-    input.dispose()
+    if (typeof input.dispose === 'function') {
+      try { input.dispose() } catch {}
+    }
   }
 }
 

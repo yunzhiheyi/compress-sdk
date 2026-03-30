@@ -6,7 +6,15 @@
  */
 
 import type { VideoCompressOptions, VideoCompressProgress, VideoCompressResult, VideoQuality } from '../types'
-
+import {
+  BlobSource,
+  Input,
+  Output,
+  BufferTarget,
+  Mp4OutputFormat,
+  Conversion,
+  ALL_FORMATS,
+} from 'mediabunny';
 const QUALITY_PRESETS: Record<Exclude<VideoQuality, 'custom'>, {
   videoBitrate: string
   audioBitrate: string
@@ -88,56 +96,66 @@ export async function compressVideo(
   const videoBitrate = parseBitrate(resolved.videoBitrate)
   const audioBitrate = parseBitrate(resolved.audioBitrate)
 
-  const {
-    BlobSource,
-    Input,
-    Output,
-    BufferTarget,
-    Mp4OutputFormat,
-    Conversion,
-    MP4,
-  } = await import('mediabunny')
-
   const source = new BlobSource(file)
-  const input = new Input({ source, formats: [MP4] })
+  const fileSize = await source.getSize()
+  if (!fileSize) throw new Error('文件大小为 0 或不可访问')
+
+  const input = new Input({ source, formats: ALL_FORMATS })
+
+  const vtrack = await input.getPrimaryVideoTrack().catch(() => null)
+  const atrack = input.getPrimaryAudioTrack
+    ? await input.getPrimaryAudioTrack().catch(() => null)
+    : null
+
+  if (!vtrack && !atrack) throw new Error('未检测到有效音视频轨')
+
+  const oW = vtrack?.displayWidth ?? 0
+
+  // 目标宽度，不放大
+  let targetWidth: number | undefined
+  if (!vtrack) {
+    targetWidth = undefined
+  } else if (resolved.targetWidth) {
+    targetWidth = Math.min(resolved.targetWidth, oW)
+  } else {
+    targetWidth = oW
+  }
+
   const output = new Output({
     target: new BufferTarget(),
     format: new Mp4OutputFormat(),
   })
 
-  // Calculate target dimensions
-  const originalSize_ = await getOriginalVideoSize(file)
-  let targetWidth = resolved.targetWidth
-  let targetHeight = resolved.targetHeight
+  const conversionOpts: any = { input, output }
 
-  if (resolved.maintainAspectRatio && originalSize_.width > 0) {
-    const aspectRatio = originalSize_.width / originalSize_.height
-
-    if (targetWidth && !targetHeight) {
-      targetHeight = Math.round(targetWidth / aspectRatio)
-    } else if (targetHeight && !targetWidth) {
-      targetWidth = Math.round(targetHeight * aspectRatio)
-    }
-  }
-
-  if (targetWidth && targetWidth > originalSize_.width) {
-    targetWidth = originalSize_.width
-    targetHeight = originalSize_.height
-  }
-
-  const controller = await Conversion.init({
-    input,
-    output,
-    video: {
-      width: targetWidth || undefined,
+  if (vtrack) {
+    conversionOpts.video = (track: any) => ({
+      width: targetWidth,
       bitrate: videoBitrate,
-    },
-    audio: {
-      bitrate: audioBitrate,
-    },
-    ...(resolved.trim ? { trim: resolved.trim } : {}),
+      discard: track.number > 1, // 只保留第一条视频轨
+    })
+  }
+
+  conversionOpts.audio = (track: any) => ({
+    bitrate: audioBitrate,
+    discard: track.number > 1, // 只保留第一条音频轨
   })
 
+  const firstTimestamp = await input.getFirstTimestamp().catch(() => 0)
+  const duration = await input.computeDuration().catch(() => 0)
+
+  const trimStart = Math.max(firstTimestamp * 2, resolved.trim?.start ?? 0)
+  const trimEnd = resolved.trim?.end ?? duration
+  console.log('firstTimestamp:', firstTimestamp)
+  console.log('duration:', duration)
+  console.log('trimStart:', trimStart)
+  console.log('trimEnd:', trimEnd)
+  conversionOpts.trim = {
+    start: trimStart,
+    end: trimEnd,
+  }
+
+  const controller = await Conversion.init(conversionOpts)
   let lastProgress = 0
   const startTime = performance.now()
 
@@ -146,9 +164,7 @@ export async function compressVideo(
       const elapsed = (performance.now() - startTime) / 1000
       const speed = np > 0 ? np / elapsed : 0
       const remainingTime = np < 1 ? (1 - np) / speed : 0
-
       lastProgress = np
-
       onProgress({
         percent: Math.round(np * 100),
         speed: speed * 10,
@@ -160,9 +176,7 @@ export async function compressVideo(
   await controller.execute()
 
   const buffer = output.target.buffer
-  if (!buffer) {
-    throw new Error('Compression failed: output buffer is null')
-  }
+  if (!buffer) throw new Error('Compression failed: output buffer is null')
 
   const blob = new Blob([buffer], { type: 'video/mp4' })
   const url = URL.createObjectURL(blob)

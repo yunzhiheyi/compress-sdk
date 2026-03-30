@@ -92,7 +92,9 @@ export async function extractFrames(
 
     return results
   } finally {
-    input.dispose()
+    if (typeof input.dispose === 'function') {
+      try { input.dispose() } catch {}
+    }
   }
 }
 
