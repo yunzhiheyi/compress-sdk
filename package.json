@@ -1,6 +1,6 @@
 {
   "name": "compress-sdk-plus",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "Browser-side media compression SDK supporting video and image compression",
   "type": "module",
   "main": "./index.ts",
