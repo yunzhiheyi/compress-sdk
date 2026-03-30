@@ -15,6 +15,7 @@ import {
   Conversion,
   ALL_FORMATS,
 } from 'mediabunny';
+
 const QUALITY_PRESETS: Record<Exclude<VideoQuality, 'custom'>, {
   videoBitrate: string
   audioBitrate: string
@@ -63,141 +64,123 @@ function resolveOptions(options: VideoCompressOptions) {
   }
 }
 
-function getOriginalVideoSize(file: File): Promise<{ width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement('video')
-    video.preload = 'metadata'
-
-    video.onloadedmetadata = () => {
-      URL.revokeObjectURL(video.src)
-      resolve({ width: video.videoWidth, height: video.videoHeight })
-    }
-
-    video.onerror = () => {
-      URL.revokeObjectURL(video.src)
-      reject(new Error('Failed to get video info'))
-    }
-
-    video.src = URL.createObjectURL(file)
-  })
-}
-
 /**
- * Compress video file
+ * 压缩视频文件
+ * @returns [promise, cancelFn] - cancelFn 可在 promise resolve 前调用以取消压缩
  */
-export async function compressVideo(
+export function compressVideo(
   file: File,
   options: VideoCompressOptions = {},
   onProgress?: (progress: VideoCompressProgress) => void
-): Promise<VideoCompressResult> {
-  const resolved = resolveOptions(options)
-  const originalSize = file.size
+): [Promise<VideoCompressResult>, () => void] {
+  let cancelCalled = false
 
-  const videoBitrate = parseBitrate(resolved.videoBitrate)
-  const audioBitrate = parseBitrate(resolved.audioBitrate)
+  const promise = (async () => {
+    const resolved = resolveOptions(options)
+    const originalSize = file.size
 
-  const source = new BlobSource(file)
-  const fileSize = await source.getSize()
-  if (!fileSize) throw new Error('文件大小为 0 或不可访问')
+    const videoBitrate = parseBitrate(resolved.videoBitrate)
+    const audioBitrate = parseBitrate(resolved.audioBitrate)
 
-  const input = new Input({ source, formats: ALL_FORMATS })
+    const source = new BlobSource(file)
+    const fileSize = await source.getSize()
+    if (!fileSize) throw new Error('文件大小为 0 或不可访问')
+    if (cancelCalled) throw new Error('Compression cancelled')
 
-  const vtrack = await input.getPrimaryVideoTrack().catch(() => null)
-  const atrack = input.getPrimaryAudioTrack
-    ? await input.getPrimaryAudioTrack().catch(() => null)
-    : null
+    const input = new Input({ source, formats: ALL_FORMATS })
 
-  if (!vtrack && !atrack) throw new Error('未检测到有效音视频轨')
+    const vtrack = await input.getPrimaryVideoTrack().catch(() => null)
+    const atrack = input.getPrimaryAudioTrack
+      ? await input.getPrimaryAudioTrack().catch(() => null)
+      : null
 
-  const oW = vtrack?.displayWidth ?? 0
+    if (!vtrack && !atrack) throw new Error('未检测到有效音视频轨')
+    if (cancelCalled) throw new Error('Compression cancelled')
 
-  // 目标宽度，不放大
-  let targetWidth: number | undefined
-  if (!vtrack) {
-    targetWidth = undefined
-  } else if (resolved.targetWidth) {
-    targetWidth = Math.min(resolved.targetWidth, oW)
-  } else {
-    targetWidth = oW
-  }
+    const oW = vtrack?.displayWidth ?? 0
 
-  const output = new Output({
-    target: new BufferTarget(),
-    format: new Mp4OutputFormat(),
-  })
+    let targetWidth: number | undefined
+    if (!vtrack) {
+      targetWidth = undefined
+    } else if (resolved.targetWidth) {
+      targetWidth = Math.min(resolved.targetWidth, oW)
+    } else {
+      targetWidth = oW
+    }
 
-  const conversionOpts: any = { input, output }
-
-  if (vtrack) {
-    conversionOpts.video = (track: any) => ({
-      width: targetWidth,
-      bitrate: videoBitrate,
-      discard: track.number > 1, // 只保留第一条视频轨
+    const output = new Output({
+      target: new BufferTarget(),
+      format: new Mp4OutputFormat(),
     })
-  }
 
-  conversionOpts.audio = (track: any) => ({
-    bitrate: audioBitrate,
-    discard: track.number > 1, // 只保留第一条音频轨
-  })
+    const conversionOpts: any = { input, output }
 
-  const firstTimestamp = await input.getFirstTimestamp().catch(() => 0)
-  const duration = await input.computeDuration().catch(() => 0)
-
-  const trimStart = Math.max(firstTimestamp * 2, resolved.trim?.start ?? 0)
-  const trimEnd = resolved.trim?.end ?? duration
-  console.log('firstTimestamp:', firstTimestamp)
-  console.log('duration:', duration)
-  console.log('trimStart:', trimStart)
-  console.log('trimEnd:', trimEnd)
-  conversionOpts.trim = {
-    start: trimStart,
-    end: trimEnd,
-  }
-
-  const controller = await Conversion.init(conversionOpts)
-  let lastProgress = 0
-  const startTime = performance.now()
-  let cancelled = false
-
-  controller.onProgress = (np: number) => {
-    if (cancelled) return
-    if (onProgress && np >= lastProgress) {
-      const elapsed = (performance.now() - startTime) / 1000
-      const speed = np > 0 ? np / elapsed : 0
-      const remainingTime = np < 1 ? (1 - np) / speed : 0
-      lastProgress = np
-      onProgress({
-        percent: Math.round(np * 100),
-        speed: speed * 10,
-        remainingTime,
+    if (vtrack) {
+      conversionOpts.video = (track: any) => ({
+        width: targetWidth,
+        bitrate: videoBitrate,
+        discard: track.number > 1,
       })
     }
-  }
 
-  await controller.execute()
+    conversionOpts.audio = (track: any) => ({
+      bitrate: audioBitrate,
+      discard: track.number > 1,
+    })
 
-  if (cancelled) {
-    throw new Error('Compression cancelled')
-  }
+    const firstTimestamp = await input.getFirstTimestamp().catch(() => 0)
+    const duration = await input.computeDuration().catch(() => 0)
 
-  const buffer = output.target.buffer
-  if (!buffer) throw new Error('Compression failed: output buffer is null')
+    const trimStart = Math.max(firstTimestamp * 2, resolved.trim?.start ?? 0)
+    const trimEnd = resolved.trim?.end ?? duration
+    conversionOpts.trim = {
+      start: trimStart,
+      end: trimEnd,
+    }
 
-  const blob = new Blob([buffer], { type: 'video/mp4' })
-  const url = URL.createObjectURL(blob)
+    const controller = await Conversion.init(conversionOpts)
+    let lastProgress = 0
+    const startTime = performance.now()
 
-  return {
-    blob,
-    url,
-    size: blob.size,
-    compressionRatio: originalSize / blob.size,
-    originalSize,
-    cancel: () => {
-      cancelled = true
-      if (typeof controller.cancel === 'function') {
-        controller.cancel()
+    controller.onProgress = (np: number) => {
+      if (cancelCalled) return
+      if (onProgress && np >= lastProgress) {
+        const elapsed = (performance.now() - startTime) / 1000
+        const speed = np > 0 ? np / elapsed : 0
+        const remainingTime = np < 1 ? (1 - np) / speed : 0
+        lastProgress = np
+        onProgress({
+          percent: Math.round(np * 100),
+          speed: speed * 10,
+          remainingTime,
+        })
       }
-    },
+    }
+
+    if (cancelCalled) throw new Error('Compression cancelled')
+
+    await controller.execute()
+
+    if (cancelCalled) throw new Error('Compression cancelled')
+
+    const buffer = output.target.buffer
+    if (!buffer) throw new Error('Compression failed: output buffer is null')
+
+    const blob = new Blob([buffer], { type: 'video/mp4' })
+    const url = URL.createObjectURL(blob)
+
+    return {
+      blob,
+      url,
+      size: blob.size,
+      compressionRatio: originalSize / blob.size,
+      originalSize,
+    }
+  })()
+
+  const cancel = () => {
+    cancelCalled = true
   }
+
+  return [promise, cancel]
 }
