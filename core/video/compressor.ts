@@ -158,8 +158,10 @@ export async function compressVideo(
   const controller = await Conversion.init(conversionOpts)
   let lastProgress = 0
   const startTime = performance.now()
+  let cancelled = false
 
   controller.onProgress = (np: number) => {
+    if (cancelled) return
     if (onProgress && np >= lastProgress) {
       const elapsed = (performance.now() - startTime) / 1000
       const speed = np > 0 ? np / elapsed : 0
@@ -175,6 +177,10 @@ export async function compressVideo(
 
   await controller.execute()
 
+  if (cancelled) {
+    throw new Error('Compression cancelled')
+  }
+
   const buffer = output.target.buffer
   if (!buffer) throw new Error('Compression failed: output buffer is null')
 
@@ -187,5 +193,11 @@ export async function compressVideo(
     size: blob.size,
     compressionRatio: originalSize / blob.size,
     originalSize,
+    cancel: () => {
+      cancelled = true
+      if (typeof controller.cancel === 'function') {
+        controller.cancel()
+      }
+    },
   }
 }

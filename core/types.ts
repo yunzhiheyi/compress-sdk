@@ -45,6 +45,7 @@ export interface VideoCompressResult {
   size: number
   compressionRatio: number
   originalSize: number
+  cancel: () => void
 }
 
 /** 视频质量预设 */
