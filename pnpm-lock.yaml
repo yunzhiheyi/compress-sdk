@@ -20,6 +20,9 @@ dependencies:
   '@jsquash/webp':
     specifier: ^1.5.0
     version: 1.5.0
+  compress-sdk-plus:
+    specifier: 1.0.14
+    version: 1.0.14(vue@3.5.31)
   mediabunny:
     specifier: ^1.40.1
     version: 1.40.1
@@ -372,6 +375,20 @@ packages:
 
   /@vue/shared@3.5.31:
     resolution: {integrity: sha512-nBxuiuS9Lj5bPkPbWogPUnjxxWpkRniX7e5UBQDWl6Fsf4roq9wwV+cR7ezQ4zXswNvPIlsdj1slcLB7XCsRAw==}
+    dev: false
+
+  /compress-sdk-plus@1.0.14(vue@3.5.31):
+    resolution: {integrity: sha512-kLvvPe4LDvkxXBUu1yqq8VpTE+7yrgzIsJPnt4azS8TvBUMXtTAJw1Y3kfTM/dmPjUuyIYrIEtXsOUugHMQKMQ==}
+    peerDependencies:
+      vue: ^3.5.31
+    dependencies:
+      '@jsquash/avif': 2.1.1
+      '@jsquash/jpeg': 1.6.0
+      '@jsquash/png': 3.1.1
+      '@jsquash/resize': 2.1.1
+      '@jsquash/webp': 1.5.0
+      mediabunny: 1.40.1
+      vue: 3.5.31(typescript@6.0.2)
     dev: false
 
   /csstype@3.2.3:

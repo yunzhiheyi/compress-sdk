@@ -63,51 +63,62 @@ function resolveOptions(options: VideoCompressOptions) {
     trim: options.trim,
   }
 }
-
 /**
  * 压缩视频文件
- * @returns [promise, cancelFn] - cancelFn 可在 promise resolve 前调用以取消压缩
+ *
+ * @example
+ * // 基础用法
+ * const { promise, cancel } = compressVideo(file)
+ * const result = await promise
+ *
+ * @example
+ * // 带进度 + 取消
+ * const { promise, cancel } = compressVideo(file, { targetWidth: 1280 }, (p) => {
+ *   console.log(`${p.percent}%`)
+ * })
+ * cancelBtn.onclick = cancel
+ * const result = await promise
  */
 export function compressVideo(
   file: File,
   options: VideoCompressOptions = {},
   onProgress?: (progress: VideoCompressProgress) => void
-): [Promise<VideoCompressResult>, () => void] {
-  let cancelCalled = false
+): { promise: Promise<VideoCompressResult>; cancel: () => void } {
+  let cancelled = false
 
-  const promise = (async () => {
+  const promise = (async (): Promise<VideoCompressResult> => {
     const resolved = resolveOptions(options)
     const originalSize = file.size
 
     const videoBitrate = parseBitrate(resolved.videoBitrate)
     const audioBitrate = parseBitrate(resolved.audioBitrate)
 
+    // ── Source ──────────────────────────────────────────────────────────────
     const source = new BlobSource(file)
     const fileSize = await source.getSize()
     if (!fileSize) throw new Error('文件大小为 0 或不可访问')
-    if (cancelCalled) throw new Error('Compression cancelled')
+    if (cancelled) throw new Error('用户取消压缩')
 
+    // ── Tracks ───────────────────────────────────────────────────────────────
     const input = new Input({ source, formats: ALL_FORMATS })
 
-    const vtrack = await input.getPrimaryVideoTrack().catch(() => null)
-    const atrack = input.getPrimaryAudioTrack
-      ? await input.getPrimaryAudioTrack().catch(() => null)
-      : null
+    const [vtrack, atrack] = await Promise.all([
+      input.getPrimaryVideoTrack().catch(() => null),
+      input.getPrimaryAudioTrack?.().catch(() => null) ?? null,
+    ])
 
     if (!vtrack && !atrack) throw new Error('未检测到有效音视频轨')
-    if (cancelCalled) throw new Error('Compression cancelled')
+    if (cancelled) throw new Error('用户取消压缩')
 
-    const oW = vtrack?.displayWidth ?? 0
+    // ── Target width ─────────────────────────────────────────────────────────
+    const originalWidth = vtrack?.displayWidth ?? 0
+    const targetWidth = !vtrack
+      ? undefined
+      : resolved.targetWidth
+        ? Math.min(resolved.targetWidth, originalWidth)
+        : originalWidth
 
-    let targetWidth: number | undefined
-    if (!vtrack) {
-      targetWidth = undefined
-    } else if (resolved.targetWidth) {
-      targetWidth = Math.min(resolved.targetWidth, oW)
-    } else {
-      targetWidth = oW
-    }
-
+    // ── Output ───────────────────────────────────────────────────────────────
     const output = new Output({
       target: new BufferTarget(),
       format: new Mp4OutputFormat(),
@@ -128,50 +139,61 @@ export function compressVideo(
       discard: track.number > 1,
     })
 
-    const firstTimestamp = await input.getFirstTimestamp().catch(() => 0)
-    const duration = await input.computeDuration().catch(() => 0)
+    // ── Trim ─────────────────────────────────────────────────────────────────
+    const [firstTimestamp, duration] = await Promise.all([
+      input.getFirstTimestamp().catch(() => 0),
+      input.computeDuration().catch(() => 0),
+    ])
 
-    const trimStart = Math.max(firstTimestamp * 2, resolved.trim?.start ?? 0)
-    const trimEnd = resolved.trim?.end ?? duration
     conversionOpts.trim = {
-      start: trimStart,
-      end: trimEnd,
+      start: Math.max(firstTimestamp * 2, resolved.trim?.start ?? 0),
+      end: resolved.trim?.end ?? duration,
     }
 
+    // ── Conversion ───────────────────────────────────────────────────────────
     const controller = await Conversion.init(conversionOpts)
+
     let lastProgress = 0
     const startTime = performance.now()
 
     controller.onProgress = (np: number) => {
-      if (cancelCalled) return
-      if (onProgress && np >= lastProgress) {
+      if (cancelled || np < lastProgress) return
+      lastProgress = np
+
+      if (onProgress) {
         const elapsed = (performance.now() - startTime) / 1000
-        const speed = np > 0 ? np / elapsed : 0
-        const remainingTime = np < 1 ? (1 - np) / speed : 0
-        lastProgress = np
+        const speed = elapsed > 0 ? np / elapsed : 0
         onProgress({
           percent: Math.round(np * 100),
           speed: speed * 10,
-          remainingTime,
+          remainingTime: speed > 0 ? (1 - np) / speed : 0,
         })
       }
     }
 
-    if (cancelCalled) throw new Error('Compression cancelled')
+    if (cancelled) {
+      controller.cancel?.()
+      throw new Error('用户取消压缩')
+    }
 
-    await controller.execute()
+    try {
+      await controller.execute()
+    } catch (err: any) {
+      if (cancelled) throw new Error('用户取消压缩')
+      throw err
+    }
 
-    if (cancelCalled) throw new Error('Compression cancelled')
+    if (cancelled) throw new Error('用户取消压缩')
 
+    // ── Result ────────────────────────────────────────────────────────────────
     const buffer = output.target.buffer
-    if (!buffer) throw new Error('Compression failed: output buffer is null')
+    if (!buffer) throw new Error('压缩失败：输出 buffer 为空')
 
     const blob = new Blob([buffer], { type: 'video/mp4' })
-    const url = URL.createObjectURL(blob)
 
     return {
       blob,
-      url,
+      url: URL.createObjectURL(blob),
       size: blob.size,
       compressionRatio: originalSize / blob.size,
       originalSize,
@@ -179,8 +201,8 @@ export function compressVideo(
   })()
 
   const cancel = () => {
-    cancelCalled = true
+    cancelled = true
   }
 
-  return [promise, cancel]
+  return { promise, cancel }
 }
