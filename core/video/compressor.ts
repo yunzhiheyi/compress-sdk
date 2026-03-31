@@ -96,8 +96,8 @@ export function compressVideo(
     // ── Source ──────────────────────────────────────────────────────────────
     const source = new BlobSource(file)
     const fileSize = await source.getSize()
-    if (!fileSize) throw new Error('文件大小为 0 或不可访问')
-    if (cancelled) throw new Error('用户取消压缩')
+    if (!fileSize) throw new Error('file size is 0 or inaccessible')
+    if (cancelled) throw new Error('cancelled')
 
     // ── Tracks ───────────────────────────────────────────────────────────────
     const input = new Input({ source, formats: ALL_FORMATS })
@@ -107,8 +107,8 @@ export function compressVideo(
       input.getPrimaryAudioTrack?.().catch(() => null) ?? null,
     ])
 
-    if (!vtrack && !atrack) throw new Error('未检测到有效音视频轨')
-    if (cancelled) throw new Error('用户取消压缩')
+    if (!vtrack && !atrack) throw new Error('no valid video or audio track found')
+    if (cancelled) throw new Error('cancelled')
 
     // ── Target width ─────────────────────────────────────────────────────────
     const originalWidth = vtrack?.displayWidth ?? 0
@@ -173,21 +173,21 @@ export function compressVideo(
 
     if (cancelled) {
       controller.cancel?.()
-      throw new Error('用户取消压缩')
+      throw new Error('cancelled')
     }
 
     try {
       await controller.execute()
     } catch (err: any) {
-      if (cancelled) throw new Error('用户取消压缩')
+      if (cancelled) throw new Error('cancelled')
       throw err
     }
 
-    if (cancelled) throw new Error('用户取消压缩')
+    if (cancelled) throw new Error('cancelled')
 
     // ── Result ────────────────────────────────────────────────────────────────
     const buffer = output.target.buffer
-    if (!buffer) throw new Error('压缩失败：输出 buffer 为空')
+    if (!buffer) throw new Error('buffer is empty')
 
     const blob = new Blob([buffer], { type: 'video/mp4' })
 

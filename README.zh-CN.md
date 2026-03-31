@@ -81,8 +81,13 @@ export default defineNuxtConfig({
     <input type="file" accept="video/*" @change="handleVideoChange" />
 
     <!-- 压缩按钮，带加载状态 -->
-    <button @click="compressVideo" :disabled="!videoFile || isCompressing">
+    <button @click="startCompress" :disabled="!videoFile || isCompressing">
       {{ isCompressing ? '压缩中...' : '压缩视频' }}
+    </button>
+
+    <!-- 取消按钮 -->
+    <button v-if="isCompressing" @click="cancelCompress">
+      取消
     </button>
 
     <!-- 进度显示 -->
@@ -106,38 +111,59 @@ const videoFile = ref(null)         // 已选择的视频文件
 const result = ref(null)             // 压缩结果
 const progress = ref(null)           // 压缩进度
 const isCompressing = ref(false)    // 加载状态
+let cancelFn = null                  // 取消函数
 
 // 处理文件选择
 function handleVideoChange(e) {
   videoFile.value = e.target.files[0]
 }
 
-// 带进度回调的视频压缩
-async function compressVideo() {
+// 开始视频压缩
+function startCompress() {
   if (!videoFile.value) return
   isCompressing.value = true
+  result.value = null
 
-  try {
-    // 调用 compressVideo，传入选项和进度回调
-    result.value = await $compress.video.compressVideo(
-      videoFile.value,                   // 源视频文件
-      {
-        quality: 'medium',             // 质量预设: low | medium | high
-        targetWidth: 1280,            // 目标宽度（像素）
-        maintainAspectRatio: true,     // 保持原始宽高比
-        trim: {                      // 可选：裁剪视频
-          start: 0,
-          end: 30
-        }
-      },
-      (p) => {                       // 进度回调
-        progress.value = p
+  // compressVideo 返回 { promise, cancel }
+  const { promise, cancel } = $compress.video.compressVideo(
+    videoFile.value,
+    {
+      quality: 'medium',             // 质量预设: low | medium | high
+      targetWidth: 1280,            // 目标宽度（像素）
+      maintainAspectRatio: true,     // 保持原始宽高比
+      trim: {                        // 可选：裁剪视频
+        start: 0,
+        end: 30
       }
-    )
-  } catch (err) {
-    console.error('压缩失败:', err)
-  } finally {
-    isCompressing.value = false
+    },
+    (p) => {                        // 进度回调
+      progress.value = p
+    }
+  )
+
+  cancelFn = cancel
+
+  promise
+    .then((res) => {
+      result.value = res
+    })
+    .catch((err) => {
+      if (err.message === 'cancelled') {
+        console.log('压缩已取消')
+      } else {
+        console.error('压缩失败:', err)
+      }
+    })
+    .finally(() => {
+      isCompressing.value = false
+      cancelFn = null
+    })
+}
+
+// 取消视频压缩
+function cancelCompress() {
+  if (cancelFn) {
+    cancelFn()
   }
 }
 </script>
@@ -253,9 +279,38 @@ async function compressImage() {
 | 方法 | 说明 |
 |------|------|
 | `parseVideoInfo(file)` | 获取视频元数据（时长、大小、分辨率等） |
-| `compressVideo(file, options, onProgress?)` | 带进度追踪的视频压缩 |
+| `compressVideo(file, options, onProgress?)` | 带进度追踪的视频压缩。返回 `{ promise, cancel }` |
 | `extractFrames(file, options)` | 按间隔提取多帧 |
 | `extractSingleFrame(file, time)` | 提取指定时间的单帧 |
+
+**compressVideo 返回值：**
+```typescript
+{
+  promise: Promise<{
+    blob: Blob
+    url: string
+    size: number
+    compressionRatio: number
+    originalSize: number
+  }>
+  cancel: () => void  // 调用以取消压缩
+}
+```
+
+**取消视频压缩：**
+```javascript
+const { promise, cancel } = $compress.video.compressVideo(file, options, onProgress)
+
+// 取消压缩：
+cancel()
+
+// 在 promise catch 中处理：
+promise.catch((err) => {
+  if (err.message === 'cancelled') {
+    // 处理取消
+  }
+})
+```
 
 ### 图片 API
 

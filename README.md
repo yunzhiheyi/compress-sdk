@@ -81,8 +81,13 @@ export default defineNuxtConfig({
     <input type="file" accept="video/*" @change="handleVideoChange" />
 
     <!-- Compress button with loading state -->
-    <button @click="compressVideo" :disabled="!videoFile || isCompressing">
+    <button @click="startCompress" :disabled="!videoFile || isCompressing">
       {{ isCompressing ? 'Compressing...' : 'Compress Video' }}
+    </button>
+
+    <!-- Cancel button -->
+    <button v-if="isCompressing" @click="cancelCompress">
+      Cancel
     </button>
 
     <!-- Progress display -->
@@ -105,39 +110,60 @@ const { $compress } = useNuxtApp()
 const videoFile = ref(null)        // Selected video file
 const result = ref(null)            // Compression result
 const progress = ref(null)          // Compression progress
-const isCompressing = ref(false)   // Loading state
+const isCompressing = ref(false)    // Loading state
+let cancelFn = null                 // Cancel function for video compression
 
 // Handle file selection from input
 function handleVideoChange(e) {
   videoFile.value = e.target.files[0]
 }
 
-// Compress video with progress callback
-async function compressVideo() {
+// Start video compression
+function startCompress() {
   if (!videoFile.value) return
   isCompressing.value = true
+  result.value = null
 
-  try {
-    // Call compressVideo with options and progress callback
-    result.value = await $compress.video.compressVideo(
-      videoFile.value,                    // Source video file
-      {
-        quality: 'medium',               // Quality preset: low | medium | high
-        targetWidth: 1280,              // Target width in pixels
-        maintainAspectRatio: true,       // Keep original aspect ratio
-        trim: {                         // Optional: trim video
-          start: 0,
-          end: 30
-        }
-      },
-      (p) => {                          // Progress callback
-        progress.value = p
+  // compressVideo returns { promise, cancel }
+  const { promise, cancel } = $compress.video.compressVideo(
+    videoFile.value,
+    {
+      quality: 'medium',               // Quality preset: low | medium | high
+      targetWidth: 1280,                // Target width in pixels
+      maintainAspectRatio: true,        // Keep original aspect ratio
+      trim: {                           // Optional: trim video
+        start: 0,
+        end: 30
       }
-    )
-  } catch (err) {
-    console.error('Compression failed:', err)
-  } finally {
-    isCompressing.value = false
+    },
+    (p) => {                           // Progress callback
+      progress.value = p
+    }
+  )
+
+  cancelFn = cancel
+
+  promise
+    .then((res) => {
+      result.value = res
+    })
+    .catch((err) => {
+      if (err.message === 'cancelled') {
+        console.log('Compression cancelled')
+      } else {
+        console.error('Compression failed:', err)
+      }
+    })
+    .finally(() => {
+      isCompressing.value = false
+      cancelFn = null
+    })
+}
+
+// Cancel video compression
+function cancelCompress() {
+  if (cancelFn) {
+    cancelFn()
   }
 }
 </script>
@@ -253,9 +279,38 @@ async function compressImage() {
 | Method | Description |
 |--------|-------------|
 | `parseVideoInfo(file)` | Get video metadata (duration, size, resolution, etc.) |
-| `compressVideo(file, options, onProgress?)` | Compress video with progress tracking |
+| `compressVideo(file, options, onProgress?)` | Compress video with progress tracking. Returns `{ promise, cancel }` |
 | `extractFrames(file, options)` | Extract multiple frames at intervals |
 | `extractSingleFrame(file, time)` | Extract single frame at specific time |
+
+**compressVideo Return Value:**
+```typescript
+{
+  promise: Promise<{
+    blob: Blob
+    url: string
+    size: number
+    compressionRatio: number
+    originalSize: number
+  }>
+  cancel: () => void  // Call to cancel the compression
+}
+```
+
+**Cancelling Video Compression:**
+```javascript
+const { promise, cancel } = $compress.video.compressVideo(file, options, onProgress)
+
+// To cancel:
+cancel()
+
+// In promise catch block:
+promise.catch((err) => {
+  if (err.message === 'cancelled') {
+    // Handle cancellation
+  }
+})
+```
 
 ### Image API
 
